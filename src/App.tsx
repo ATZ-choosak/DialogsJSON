@@ -201,7 +201,7 @@ const CustomNode = ({
           }}
           className="text-xs bg-green-100 hover:bg-green-200 text-green-800 px-2 py-1 rounded"
         >
-          ▶️ Play
+          ▶️ Start Node
         </button>
         <button
           onClick={(e) => {
@@ -759,12 +759,19 @@ const StoryFlow = () => {
 
   // Update generateStoryData function
   const generateStoryData = useCallback(
-    (tempStartNode?: string): StoryData | null => {
-      // ใช้ tempStartNode ถ้ามี ไม่งั้นใช้ startNodeId
-      const startNode = tempStartNode || startNodeId;
+    (tempStartNodeId?: string): StoryData | null => {
+      // ตรวจสอบ tempStartNodeId ก่อน ถ้าไม่มีค่อยใช้ startNodeId
+      const effectiveStartNodeId = tempStartNodeId || startNodeId;
 
-      if (!startNode) {
+      if (!effectiveStartNodeId) {
         alert("Please set a start node first!");
+        return null;
+      }
+
+      // ตรวจสอบว่า node ที่จะใช้เป็น start node มีอยู่จริง
+      const startNode = nodes.find((node) => node.id === effectiveStartNodeId);
+      if (!startNode) {
+        alert("Start node not found!");
         return null;
       }
 
@@ -775,7 +782,7 @@ const StoryFlow = () => {
 
       // First pass: Create all nodes with initialized choices array
       nodes.forEach((node) => {
-        const nodeId = node.id; // ไม่ต้องแปลงเป็น "start" แล้ว
+        const nodeId = node.id;
         storyData.nodes[nodeId] = {
           text: node.data.text || "",
           choices: [],
@@ -1076,17 +1083,9 @@ const StoryFlow = () => {
   );
 
   // Update handlePlayNode to be memoized
-  const handlePlayNode = useCallback(
-    (nodeId: string) => {
-      const data = generateStoryData(nodeId); // ส่ง nodeId เป็น tempStartNode
-      if (data) {
-        setStartNodeId(nodeId);
-        setStoryData(data);
-        setIsPlayerOpen(true);
-      }
-    },
-    [generateStoryData]
-  );
+  const handlePlayNode = (nodeId: string) => {
+    setStartNodeId(nodeId);
+  };
 
   // Move CustomNode component definition outside of render
   const CustomNodeComponent = useCallback(
