@@ -88,9 +88,9 @@ const CustomNode = ({
   onNodeContextMenu: (event: React.MouseEvent, node: Node<NodeData>) => void;
   onPlayNode: (nodeId: string) => void; // Add this type
 }) => {
-  const getCharacterName = (speakerId: string | null): string => {
+  const getCharacterName = (speakerId: string | undefined): string => {
     if (!speakerId) return "";
-    const character = storyData.characters?.find((c) => c.id === speakerId);
+    const character = storyData.characters.find((c) => c.id === speakerId);
     return character ? character.name : speakerId;
   };
 
