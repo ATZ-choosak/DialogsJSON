@@ -35,6 +35,7 @@ interface NodeData {
   isEnding: boolean;
   function_name: string | null;
   speaker?: string;
+  speakerName?: string;
   is_me?: boolean;
   onEdit?: (nodeId: string) => void;
   onDelete?: (nodeId: string) => void;
@@ -91,7 +92,7 @@ const CustomNode = ({
   const getCharacterName = (speakerId: string | undefined): string => {
     if (!speakerId) return "";
     const character = storyData.characters.find((c) => c.id === speakerId);
-    return character ? character.name : speakerId;
+    return character ? character.name : "";
   };
 
   const replacePlayerName = (text: string): string => {
@@ -140,7 +141,7 @@ const CustomNode = ({
       />
 
       <div className="flex font-medium mb-2 break-words">
-        {getCharacterName(data.speaker!)} : {replacePlayerName(data.text)}
+        {getCharacterName(data.speaker)} : {replacePlayerName(data.text)}
       </div>
 
       {data.isEnding && (
@@ -871,14 +872,14 @@ const StoryFlow = () => {
   };
 
   // Import JSON
-  const importFromJson = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const importFromJson = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const fileReader = new FileReader();
     const file = event.target.files?.[0];
 
     if (!file) return;
 
     fileReader.readAsText(file, "UTF-8");
-    fileReader.onload = (e) => {
+    fileReader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         const jsonData = JSON.parse(content);
@@ -887,19 +888,15 @@ const StoryFlow = () => {
         // Handle backward compatibility with old format
         if (jsonData.characters) {
           storyData = jsonData as StoryData;
-        } else {
-          // Convert old format to new format
-          const nodes = { ...jsonData };
-          delete nodes.characters;
-          storyData = {
-            nodes: nodes,
-            characters: jsonData.characters || [],
-          };
-        }
-
-        // Import characters if they exist
-        if (storyData.characters) {
+          // Set characters first before creating nodes
           setCharacters(storyData.characters);
+          // Wait for state update
+          await new Promise(resolve => setTimeout(resolve, 0));
+        } else {
+          storyData = {
+            nodes: jsonData,
+            characters: [],
+          };
         }
 
         // Reset current flow
@@ -908,109 +905,67 @@ const StoryFlow = () => {
 
         const newNodes: Node<NodeData>[] = [];
         const newEdges: Edge[] = [];
-        const nodeIdMap: { [key: string]: string } = {};
 
-        // Variables for managing spacing
-        let xOffset = 100; // Horizontal offset for nodes
-        let yOffset = 100; // Vertical offset for nodes
-        const nodeSpacing = 300; // Spacing between nodes
-
-        // First pass: Create all nodes
+        // Create nodes
         Object.entries(storyData.nodes).forEach(([key, data]) => {
-          const id = key; // ใช้ key เดิมแทนการสร้าง UUID ใหม่
-          nodeIdMap[key] = id;
-
-          // Set start node
-          if (key === startNodeId) {
-            setStartNodeId(id);
-          }
-
-          // Update the nodes creation part in importFromJson function
           newNodes.push({
-            id,
+            id: key,
             type: "custom",
             data: {
-              text: data.text,
-              choices: data.choices.map((choice) => ({
+              text: data.text || "",
+              choices: data.choices.map(choice => ({
                 text: choice.text,
                 function_name: choice.function_name,
-                id,
+                id: choice.id || uuidv4(),
               })),
               function_name: data.function_name || null,
               isEnding: data.isEnding || false,
-              speaker: data.speaker || "", // Make sure this is correctly set
-              is_me: Boolean(data.is_me), // Use Boolean() to ensure it's a boolean value
+              speaker: data.speaker || undefined, // Use undefined instead of null
+              speakerName: storyData.characters.find((c) => c.id === data.speaker)?.name || data.speaker || undefined,
+              is_me: data.is_me || false,
               onEdit: (nodeId: string) => editNode(nodeId),
               onDelete: (nodeId: string) => deleteNode(nodeId),
-              isStartNode: undefined,
+              isStartNode: undefined
             },
-            position: data.position || {
-              x: xOffset,
-              y: yOffset,
-            },
-            style: { width: "auto" },
+            position: data.position || { x: 0, y: 0 },
           });
-
-          // Only update offset if we're using default positioning
-          if (!data.position) {
-            yOffset += nodeSpacing;
-            if (yOffset > 600) {
-              yOffset = 100;
-              xOffset += nodeSpacing;
-            }
-          }
         });
 
-        // Second pass: Create all edges
-        Object.entries(storyData.nodes).forEach(([srcKey, data]) => {
-          const sourceId = nodeIdMap[srcKey];
-
-          // Handle choices connections
+        // Create edges
+        Object.entries(storyData.nodes).forEach(([nodeId, data]) => {
           if (data.choices && data.choices.length > 0) {
             data.choices.forEach((choice, index) => {
-              if (choice.next && nodeIdMap[choice.next]) {
+              if (choice.next) {
                 newEdges.push({
                   id: uuidv4(),
-                  source: sourceId,
-                  target: nodeIdMap[choice.next],
+                  source: nodeId,
+                  target: choice.next,
                   sourceHandle: `choice-${index}`,
+                  type: 'smoothstep',
                   label: choice.text,
-                  deletable: true,
-                  style: { strokeWidth: 1.5 },
-                  labelStyle: { fontSize: 10 },
-                  data: { choiceIndex: index },
                 });
               }
             });
-          }
-          // Handle direct 'next' connections
-          else if (data.next && nodeIdMap[data.next]) {
+          } else if (data.next) {
             newEdges.push({
               id: uuidv4(),
-              source: sourceId,
-              target: nodeIdMap[data.next],
-              sourceHandle: "default",
-              label: "Next",
-              style: { strokeWidth: 1.5 },
-              labelStyle: { fontSize: 10 },
-              data: { choiceIndex: null },
+              source: nodeId,
+              target: data.next,
+              sourceHandle: 'default',
+              type: 'smoothstep',
             });
           }
         });
 
         setNodes(newNodes);
         setEdges(newEdges);
+
       } catch (error) {
         console.error("Error importing JSON:", error);
         alert("ไม่สามารถนำเข้าไฟล์ได้ โปรดตรวจสอบรูปแบบไฟล์");
       }
-
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     };
-  };
+  }, [setNodes, setEdges, editNode, deleteNode]);
 
   // Handle node update
   const updateNode = () => {
@@ -1105,7 +1060,7 @@ const StoryFlow = () => {
     () => ({
       custom: CustomNodeComponent,
     }),
-    []
+    [characters]
   );
 
   // Add these new states at the beginning of StoryFlow component
@@ -1193,6 +1148,12 @@ const StoryFlow = () => {
       <div className="w-full bg-white shadow p-2 flex justify-between items-center">
         <h2 className="text-lg font-bold">🎭 Story Editor</h2>
         <div className="flex gap-2">
+        <button
+            onClick={() => setShowCharacterModal(true)}
+            className="bg-orange-500 text-white px-2 py-1 text-sm rounded"
+          >
+            🌐 สร้างไฟล์แปลภาษา
+          </button>
           <button
             onClick={() => setShowCharacterModal(true)}
             className="bg-pink-500 text-white px-2 py-1 text-sm rounded"
