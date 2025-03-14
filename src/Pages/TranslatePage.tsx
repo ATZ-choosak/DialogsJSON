@@ -1,5 +1,12 @@
 import React, { useState, useRef } from "react";
 
+declare module 'react' {
+  interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
+    webkitdirectory?: string;
+    directory?: string;
+  }
+}
+
 interface Node {
   text: string;
   choices?: {
@@ -35,48 +42,61 @@ const TranslatePage = (): React.ReactElement => {
     [key: string]: string;
   }>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [processingStatus, setProcessingStatus] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      setFiles(Array.from(event.target.files));
+      const selectedFiles = Array.from(event.target.files).filter(file => 
+        file.name.toLowerCase().endsWith('.json')
+      );
+      setFiles(selectedFiles);
     }
   };
 
   const processFiles = async () => {
     if (files.length === 0) {
-      alert("Please select at least one file to import.");
+      alert("Please select at least one folder with JSON files to import.");
       return;
     }
 
     setIsLoading(true);
+    setProcessingStatus("Starting to process files...");
+    
     try {
       const translations: { [key: string]: string } = {};
+      let processedFiles = 0;
 
       for (const file of files) {
-        const text = await file.text();
-        const data: StoryData = JSON.parse(text);
+        try {
+          setProcessingStatus(`Processing file ${++processedFiles}/${files.length}: ${file.name}`);
+          const text = await file.text();
+          const data: StoryData = JSON.parse(text);
 
-        // Process nodes
-        Object.entries(data.nodes).forEach(([nodeId, node]) => {
-          // Extract main text from nodes
-          if (node.text && typeof node.text === "string") {
-            translations[nodeId] = node.text;
-          }
+          // Process nodes
+          Object.entries(data.nodes).forEach(([nodeId, node]) => {
+            // Extract main text from nodes
+            if (node.text && typeof node.text === "string") {
+              translations[nodeId] = node.text;
+            }
 
-          // Extract text from choices
-          if (node.choices && Array.isArray(node.choices)) {
-            node.choices.forEach((choice) => {
-              if (choice.text && typeof choice.text === "string") {
-                const choiceId = `${nodeId}`;
-                translations[choiceId] = choice.text;
-              }
-            });
-          }
-        });
+            // Extract text from choices
+            if (node.choices && Array.isArray(node.choices)) {
+              node.choices.forEach((choice, index) => {
+                if (choice.text && typeof choice.text === "string") {
+                  const choiceId = `${nodeId}_choice_${index}`;
+                  translations[choiceId] = choice.text;
+                }
+              });
+            }
+          });
+        } catch (err) {
+          console.error(`Error processing file ${file.name}:`, err);
+        }
       }
 
       setTranslationData(translations);
+      setProcessingStatus(`Completed processing ${processedFiles} files.`);
     } catch (error) {
       console.error("Error processing files:", error);
       alert("Error processing files. Please check the file format.");
@@ -111,20 +131,48 @@ const TranslatePage = (): React.ReactElement => {
     }
   };
 
+  const triggerFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-5 font-sans">
       <h1 className="text-2xl font-bold mb-4">Translation Export Tool</h1>
 
       <div className="mb-8 p-5 border border-gray-300 rounded-md">
         <h2 className="text-xl font-semibold mb-3">Import Story Files</h2>
+        
         <input
           type="file"
           accept=".json"
           multiple
+          webkitdirectory="true"
+          directory=""
           onChange={handleFileChange}
           ref={fileInputRef}
-          className="mb-4 w-full"
+          className="hidden"
         />
+        
+        <div className="mb-4 flex flex-col gap-2">
+          <button
+            onClick={triggerFileInput}
+            className="px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            Select Folder with JSON Files
+          </button>
+          
+          {files.length > 0 && (
+            <p className="text-sm text-gray-600">
+              {files.length} JSON {files.length === 1 ? 'file' : 'files'} selected
+            </p>
+          )}
+        </div>
+        
         <div className="flex gap-3">
           <button
             onClick={processFiles}
@@ -153,14 +201,22 @@ const TranslatePage = (): React.ReactElement => {
             Clear
           </button>
         </div>
+        
+        {isLoading && processingStatus && (
+          <div className="mt-4 text-sm text-gray-600">
+            {processingStatus}
+          </div>
+        )}
       </div>
 
       {files.length > 0 && (
         <div className="mb-8 p-5 border border-gray-300 rounded-md">
           <h3 className="text-lg font-semibold mb-2">Selected Files:</h3>
-          <ul className="list-disc pl-5">
+          <ul className="list-disc pl-5 max-h-40 overflow-y-auto">
             {files.map((file, index) => (
-              <li key={index}>{file.name}</li>
+              <li key={index} className="text-sm">
+                {file.webkitRelativePath || file.name}
+              </li>
             ))}
           </ul>
         </div>
