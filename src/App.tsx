@@ -7,6 +7,7 @@ import React, {
   useEffect,
   useMemo,
 } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -872,100 +873,136 @@ const StoryFlow = () => {
   };
 
   // Import JSON
-  const importFromJson = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const fileReader = new FileReader();
-    const file = event.target.files?.[0];
+  const importFromJson = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const fileReader = new FileReader();
+      const file = event.target.files?.[0];
 
-    if (!file) return;
+      if (!file) return;
 
-    fileReader.readAsText(file, "UTF-8");
-    fileReader.onload = async (e) => {
-      try {
-        const content = e.target?.result as string;
-        const jsonData = JSON.parse(content);
-        let storyData: StoryData;
+      fileReader.readAsText(file, "UTF-8");
+      fileReader.onload = async (e) => {
+        try {
+          const content = e.target?.result as string;
+          const jsonData = JSON.parse(content);
+          let storyData: StoryData;
 
-        // Handle backward compatibility with old format
-        if (jsonData.characters) {
-          storyData = jsonData as StoryData;
-          // Set characters first before creating nodes
-          setCharacters(storyData.characters);
-          // Wait for state update
-          await new Promise(resolve => setTimeout(resolve, 0));
-        } else {
-          storyData = {
-            nodes: jsonData,
-            characters: [],
-          };
-        }
-
-        // Reset current flow
-        setNodes([]);
-        setEdges([]);
-
-        const newNodes: Node<NodeData>[] = [];
-        const newEdges: Edge[] = [];
-
-        // Create nodes
-        Object.entries(storyData.nodes).forEach(([key, data]) => {
-          newNodes.push({
-            id: key,
-            type: "custom",
-            data: {
-              text: data.text || "",
-              choices: data.choices.map(choice => ({
-                text: choice.text,
-                function_name: choice.function_name,
-                id: choice.id || uuidv4(),
-              })),
-              function_name: data.function_name || null,
-              isEnding: data.isEnding || false,
-              speaker: data.speaker || undefined, // Use undefined instead of null
-              speakerName: storyData.characters.find((c) => c.id === data.speaker)?.name || data.speaker || undefined,
-              is_me: data.is_me || false,
-              onEdit: (nodeId: string) => editNode(nodeId),
-              onDelete: (nodeId: string) => deleteNode(nodeId),
-              isStartNode: undefined
-            },
-            position: data.position || { x: 0, y: 0 },
-          });
-        });
-
-        // Create edges
-        Object.entries(storyData.nodes).forEach(([nodeId, data]) => {
-          if (data.choices && data.choices.length > 0) {
-            data.choices.forEach((choice, index) => {
-              if (choice.next) {
-                newEdges.push({
-                  id: uuidv4(),
-                  source: nodeId,
-                  target: choice.next,
-                  sourceHandle: `choice-${index}`,
-                  type: 'smoothstep',
-                  label: choice.text,
-                });
-              }
-            });
-          } else if (data.next) {
-            newEdges.push({
-              id: uuidv4(),
-              source: nodeId,
-              target: data.next,
-              sourceHandle: 'default',
-              type: 'smoothstep',
-            });
+          // Handle backward compatibility with old format
+          if (jsonData.characters) {
+            storyData = jsonData as StoryData;
+            // Set characters first before creating nodes
+            setCharacters(storyData.characters);
+            // Wait for state update
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          } else {
+            storyData = {
+              nodes: jsonData,
+              characters: [],
+            };
           }
-        });
 
-        setNodes(newNodes);
-        setEdges(newEdges);
+          // Reset current flow
+          setNodes([]);
+          setEdges([]);
 
-      } catch (error) {
-        console.error("Error importing JSON:", error);
-        alert("ไม่สามารถนำเข้าไฟล์ได้ โปรดตรวจสอบรูปแบบไฟล์");
-      }
-    };
-  }, [setNodes, setEdges, editNode, deleteNode]);
+          const newNodes: Node<NodeData>[] = [];
+          const newEdges: Edge[] = [];
+          
+          // Create a map for old keys to new UUIDs when needed
+          const keyMap: Record<string, string> = {};
+          
+          // Check if keys are valid UUIDs and create mapping
+          Object.keys(storyData.nodes).forEach((key) => {
+            // Simple UUID validation (not perfect but catches most non-UUID keys)
+            const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
+            if (!isValidUUID) {
+              const newUUID = uuidv4();
+              keyMap[key] = newUUID;
+            } else {
+              keyMap[key] = key; // Keep original valid UUIDs
+            }
+          });
+
+          // Create nodes with new keys when needed
+          Object.entries(storyData.nodes).forEach(([key, data]) => {
+            const nodeId = keyMap[key]; // Use mapped UUID (either original or new)
+            
+            newNodes.push({
+              id: nodeId,
+              type: "custom",
+              data: {
+                text: data.text || "",
+                choices: data.choices.map((choice) => ({
+                  id: uuidv4(), // Always generate a new unique ID
+                  text: choice.text,
+                  function_name: choice.function_name,
+                })),
+                function_name: data.function_name || null,
+                isEnding: data.isEnding || false,
+                speaker: data.speaker || undefined, // Use undefined instead of null
+                speakerName:
+                  storyData.characters.find((c) => c.id === data.speaker)
+                    ?.name ||
+                  data.speaker ||
+                  undefined,
+                is_me: data.is_me || false,
+                onEdit: (nodeId: string) => editNode(nodeId),
+                onDelete: (nodeId: string) => deleteNode(nodeId),
+                isStartNode: undefined,
+              },
+              position: data.position || { x: 0, y: 0 },
+            });
+          });
+
+          // Create edges with remapped IDs
+          Object.entries(storyData.nodes).forEach(([key, data]) => {
+            const sourceId = keyMap[key]; // Use mapped UUID for source
+            
+            if (data.choices && data.choices.length > 0) {
+              data.choices.forEach((choice, index) => {
+                if (choice.next) {
+                  // Use mapped UUID for target as well
+                  const targetId = keyMap[choice.next] || choice.next;
+                  
+                  newEdges.push({
+                    id: uuidv4(),
+                    source: sourceId,
+                    target: targetId,
+                    sourceHandle: `choice-${index}`,
+                    type: "smoothstep",
+                    label: choice.text,
+                  });
+                }
+              });
+            } else if (data.next) {
+              // Use mapped UUID for target
+              const targetId = keyMap[data.next] || data.next;
+              
+              newEdges.push({
+                id: uuidv4(),
+                source: sourceId,
+                target: targetId,
+                sourceHandle: "default",
+                type: "smoothstep",
+              });
+            }
+          });
+
+          setNodes(newNodes);
+          setEdges(newEdges);
+          
+          // Update startNodeId if needed
+          if (startNodeId && keyMap[startNodeId] !== startNodeId) {
+            setStartNodeId(keyMap[startNodeId]);
+          }
+        } catch (error) {
+          console.error("Error importing JSON:", error);
+          alert("ไม่สามารถนำเข้าไฟล์ได้ โปรดตรวจสอบรูปแบบไฟล์");
+        }
+      };
+    },
+    [setNodes, setEdges, editNode, deleteNode, startNodeId]
+  );
 
   // Handle node update
   const updateNode = () => {
@@ -979,8 +1016,8 @@ const StoryFlow = () => {
                   ...node.data,
                   text: newNodeText,
                   choices: newNodeChoices.map((choice) => ({
-                    ...choice,
-                    id: uuidv4(),
+                    id: uuidv4(), // Always generate a new ID for each choice
+                    text: choice.text,
                     function_name: choice.function_name || null,
                   })),
                   isEnding: isNodeEnding,
@@ -1143,13 +1180,15 @@ const StoryFlow = () => {
     [copiedNode, deleteNode, editNode, setNodes]
   );
 
+  const navigate = useNavigate();
+
   return (
     <div className="w-screen h-screen flex flex-col items-center bg-gray-100">
       <div className="w-full bg-white shadow p-2 flex justify-between items-center">
         <h2 className="text-lg font-bold">🎭 Story Editor</h2>
         <div className="flex gap-2">
-        <button
-            onClick={() => setShowCharacterModal(true)}
+          <button
+            onClick={() => navigate("/translate")}
             className="bg-orange-500 text-white px-2 py-1 text-sm rounded"
           >
             🌐 สร้างไฟล์แปลภาษา
