@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 
-declare module 'react' {
+declare module "react" {
   interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
     webkitdirectory?: string;
     directory?: string;
@@ -47,8 +47,8 @@ const TranslatePage = (): React.ReactElement => {
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      const selectedFiles = Array.from(event.target.files).filter(file => 
-        file.name.toLowerCase().endsWith('.json')
+      const selectedFiles = Array.from(event.target.files).filter((file) =>
+        file.name.toLowerCase().endsWith(".json")
       );
       setFiles(selectedFiles);
     }
@@ -62,14 +62,16 @@ const TranslatePage = (): React.ReactElement => {
 
     setIsLoading(true);
     setProcessingStatus("Starting to process files...");
-    
+
     try {
       const translations: { [key: string]: string } = {};
       let processedFiles = 0;
 
       for (const file of files) {
         try {
-          setProcessingStatus(`Processing file ${++processedFiles}/${files.length}: ${file.name}`);
+          setProcessingStatus(
+            `Processing file ${++processedFiles}/${files.length}: ${file.name}`
+          );
           const text = await file.text();
           const data: StoryData = JSON.parse(text);
 
@@ -82,9 +84,9 @@ const TranslatePage = (): React.ReactElement => {
 
             // Extract text from choices
             if (node.choices && Array.isArray(node.choices)) {
-              node.choices.forEach((choice, index) => {
+              node.choices.forEach((choice) => {
                 if (choice.text && typeof choice.text === "string") {
-                  const choiceId = `${nodeId}_choice_${index}`;
+                  const choiceId = choice.id;
                   translations[choiceId] = choice.text;
                 }
               });
@@ -143,7 +145,7 @@ const TranslatePage = (): React.ReactElement => {
 
       <div className="mb-8 p-5 border border-gray-300 rounded-md">
         <h2 className="text-xl font-semibold mb-3">Import Story Files</h2>
-        
+
         <input
           type="file"
           accept=".json"
@@ -154,25 +156,37 @@ const TranslatePage = (): React.ReactElement => {
           ref={fileInputRef}
           className="hidden"
         />
-        
+
         <div className="mb-4 flex flex-col gap-2">
           <button
             onClick={triggerFileInput}
             className="px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center justify-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+              />
             </svg>
             Select Folder with JSON Files
           </button>
-          
+
           {files.length > 0 && (
             <p className="text-sm text-gray-600">
-              {files.length} JSON {files.length === 1 ? 'file' : 'files'} selected
+              {files.length} JSON {files.length === 1 ? "file" : "files"}{" "}
+              selected
             </p>
           )}
         </div>
-        
+
         <div className="flex gap-3">
           <button
             onClick={processFiles}
@@ -201,11 +215,9 @@ const TranslatePage = (): React.ReactElement => {
             Clear
           </button>
         </div>
-        
+
         {isLoading && processingStatus && (
-          <div className="mt-4 text-sm text-gray-600">
-            {processingStatus}
-          </div>
+          <div className="mt-4 text-sm text-gray-600">{processingStatus}</div>
         )}
       </div>
 
